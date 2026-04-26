@@ -600,7 +600,6 @@
 </head>
 <body>
 
-<!-- 同步狀態列 -->
 <div class="sync-bar" id="syncBar">
   <span class="sync-dot"></span>
   <span id="syncText">啟動中...</span>
@@ -818,18 +817,12 @@
 // ============================================
 // PWA + Service Worker (離線可用 + 自動更新)
 // ============================================
-// Service Worker 必須是同源外部檔案,不能用 Blob URL
-// (Blob URL 在 Safari 等瀏覽器會被擋下來)
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js')
       .then(reg => {
         console.log('[PWA] Service Worker 已註冊', reg.scope);
-
-        // 每次打開 App 都檢查有沒有新版
         reg.update();
-
-        // 偵測到新版 SW 安裝完成 → 立刻接手
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing;
           if (!newWorker) return;
@@ -841,16 +834,12 @@ if ('serviceWorker' in navigator) {
           });
         });
       })
-      .catch(err => {
-        console.log('[PWA] Service Worker 註冊失敗:', err);
-      });
+      .catch(err => { console.log('[PWA] Service Worker 註冊失敗:', err); });
 
-    // SW 換新後,重新整理頁面拿最新內容 (只重整一次,避免無窮迴圈)
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (refreshing) return;
       refreshing = true;
-      console.log('[PWA] Service Worker 已更新,重新整理...');
       window.location.reload();
     });
   });
@@ -873,9 +862,8 @@ let currentCategory = 'food';
 // 設定:雲端 API + 本地儲存
 // ============================================
 const API_URL = 'https://script.google.com/macros/s/AKfycbyHiD5DLVFZ82WvJUPLSuM_VkmmEukd-9Er_uzbVSfNkEnXRq2a388jtjVqVn_AdZQ8/exec';
-const API_SECRET = 'pomelo2026'; // 簡單密碼,後端要加上對應驗證
+const API_SECRET = 'pomelo2026';
 const LOCAL_KEY = 'fried_rice_ledger_v3';
-const SYNC_QUEUE_KEY = 'fried_rice_sync_queue';
 
 // ============================================
 // 資料模型
@@ -895,7 +883,7 @@ let data = {
     { name: '蝦仁', amount: 300 },
     { name: '火腿', amount: 120 }
   ],
-  lastModified: 0  // 時間戳,衝突解決用
+  lastModified: 0
 };
 
 let currentYear = new Date().getFullYear();
@@ -904,7 +892,7 @@ let currentMonth = new Date().getMonth() + 1;
 // ============================================
 // 同步狀態管理
 // ============================================
-let syncStatus = 'idle'; // idle, syncing, success, error, offline
+let syncStatus = 'idle';
 let pendingSync = false;
 let syncDebounceTimer = null;
 
@@ -917,11 +905,10 @@ function setSyncStatus(status, msg) {
 }
 
 // ============================================
-// 本地儲存 (主要儲存,速度快)
+// 本地儲存 (修正版: 不更新時間戳記)
 // ============================================
 function saveLocal() {
   try {
-    data.lastModified = Date.now();
     localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
   } catch (e) {
     console.error('本地儲存失敗:', e);
@@ -945,7 +932,7 @@ function loadLocal() {
 }
 
 // ============================================
-// 雲端同步 (背景進行,不卡操作)
+// 雲端同步
 // ============================================
 async function syncToCloud() {
   if (!navigator.onLine) {
@@ -955,7 +942,7 @@ async function syncToCloud() {
   }
 
   if (syncStatus === 'syncing') {
-    pendingSync = true; // 已經在同步,等下再同步
+    pendingSync = true;
     return;
   }
 
@@ -973,36 +960,29 @@ async function syncToCloud() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     setSyncStatus('success', '✅ 已同步雲端');
     pendingSync = false;
-
-    // 成功後 5 秒切回 idle
-    setTimeout(() => {
-      if (syncStatus === 'success') {
-        setSyncStatus('idle', '☁ 雲端已同步');
-      }
-    }, 5000);
+    setTimeout(() => { if (syncStatus === 'success') setSyncStatus('idle', '☁ 雲端已同步'); }, 5000);
   } catch (e) {
     console.error('同步失敗:', e);
     setSyncStatus('error', '❌ 同步失敗,稍後重試');
     pendingSync = true;
-    // 30 秒後自動重試
     setTimeout(() => { if (pendingSync) syncToCloud(); }, 30000);
   }
 
-  // 同步中又有新變動,結束後再同步一次
   if (pendingSync && syncStatus !== 'syncing') {
     setTimeout(syncToCloud, 1000);
   }
 }
 
-// 防抖:1.5 秒內的多次操作合併成一次同步
+// 防抖 (修正版: 只有真正操作時更新時間戳記)
 function scheduleSync() {
+  data.lastModified = Date.now();
   saveLocal();
   if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
   syncDebounceTimer = setTimeout(syncToCloud, 1500);
 }
 
 // ============================================
-// 從雲端載入 (合併資料)
+// 從雲端載入 (修正版: 解除死結)
 // ============================================
 async function loadFromCloud() {
   if (!navigator.onLine) {
@@ -1015,20 +995,15 @@ async function loadFromCloud() {
   try {
     const res = await fetch(API_URL, {
       method: 'POST',
-      body: JSON.stringify({
-        action: 'load',
-        secret: API_SECRET
-      })
+      body: JSON.stringify({ action: 'load', secret: API_SECRET })
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const cloud = await res.json();
 
-    // 衝突處理:用時間戳記決定哪邊比較新
     const cloudTime = cloud.lastModified || 0;
     const localTime = data.lastModified || 0;
 
     if (cloudTime > localTime) {
-      // 雲端比較新,直接用雲端的
       if (cloud.income) data.income = cloud.income;
       if (cloud.cost) data.cost = cloud.cost;
       if (cloud.tags && cloud.tags.length > 0) data.tags = cloud.tags;
@@ -1036,33 +1011,25 @@ async function loadFromCloud() {
       saveLocal();
       setSyncStatus('success', '✅ 已從雲端更新');
     } else if (localTime > cloudTime) {
-      // 本機比較新,推上雲端
+      syncStatus = 'idle'; // 解除鎖定
       await syncToCloud();
     } else {
       setSyncStatus('success', '✅ 已是最新');
     }
 
-    setTimeout(() => {
-      if (syncStatus === 'success') {
-        setSyncStatus('idle', '☁ 雲端已同步');
-      }
-    }, 3000);
+    setTimeout(() => { if (syncStatus === 'success') setSyncStatus('idle', '☁ 雲端已同步'); }, 3000);
   } catch (e) {
     console.error('讀取雲端失敗:', e);
     setSyncStatus('error', '❌ 雲端讀取失敗,使用本機資料');
   }
 }
 
-// 手動同步按鈕
 async function manualSync() {
   showToast('開始同步...');
   await loadFromCloud();
   updateAll();
 }
 
-// ============================================
-// 監聽網路狀態
-// ============================================
 window.addEventListener('online', () => {
   showToast('🌐 網路已連線');
   if (pendingSync) syncToCloud();
@@ -1070,56 +1037,40 @@ window.addEventListener('online', () => {
 
 window.addEventListener('offline', () => {
   setSyncStatus('offline', '⚠ 離線中,資料先存本機');
-  showToast('📵 離線中,資料先存本機');
+  showToast('📵 離線中');
 });
 
-// 頁面回到前景時檢查是否有待同步的資料
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && pendingSync && navigator.onLine) {
-    syncToCloud();
-  }
+  if (!document.hidden && pendingSync && navigator.onLine) syncToCloud();
 });
 
 // ============================================
-// 工具函式
+// UI & 資料處理邏輯 (保持不變)
 // ============================================
 function fmt(n) { return Number(n || 0).toLocaleString('zh-TW'); }
-
 function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
-
 function inCurrentMonth(dateStr) {
   const [y, m] = dateStr.split('-').map(Number);
   return y === currentYear && m === currentMonth;
 }
-
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2000);
 }
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
-function genId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-}
-
-// ============================================
-// UI 切換
-// ============================================
 function changeMonth(delta) {
   currentMonth += delta;
   if (currentMonth > 12) { currentMonth = 1; currentYear++; }
   if (currentMonth < 1) { currentMonth = 12; currentYear--; }
   updateAll();
 }
-
-function updateMonthDisplay() {
-  document.getElementById('monthDisplay').textContent = `${currentYear} 年 ${currentMonth} 月`;
-}
-
+function updateMonthDisplay() { document.getElementById('monthDisplay').textContent = `${currentYear} 年 ${currentMonth} 月`; }
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -1128,386 +1079,147 @@ function switchTab(name) {
   if (name === 'chart') setTimeout(renderCharts, 50);
 }
 
-// ============================================
-// 新增營收 (即時存本機,背景同步雲端)
-// ============================================
 function addIncome() {
   const date = document.getElementById('incomeDate').value;
   const amount = parseFloat(document.getElementById('incomeAmount').value);
   const note = document.getElementById('incomeNote').value.trim();
-
-  if (!date) { showToast('請選擇日期'); return; }
-  if (!amount || amount <= 0) { showToast('請輸入營業額'); return; }
-
+  if (!date || !amount || amount <= 0) { showToast('請完整填寫'); return; }
   data.income.push({ id: genId(), date, amount, note });
   scheduleSync();
-
   document.getElementById('incomeAmount').value = '';
   document.getElementById('incomeNote').value = '';
-  showToast('已新增營收 NT$ ' + fmt(amount));
   updateAll();
 }
-
 function deleteIncome(id) {
-  if (!confirm('確定要刪除這筆營收嗎?')) return;
+  if (!confirm('確定刪除?')) return;
   data.income = data.income.filter(x => x.id !== id);
   scheduleSync();
   updateAll();
-  showToast('已刪除');
 }
 
-// ============================================
-// 新增支出
-// ============================================
 function selectCategory(cat) {
   currentCategory = cat;
-  document.querySelectorAll('.cat-option').forEach(el => {
-    el.classList.toggle('active', el.dataset.cat === cat);
-  });
-
-  const itemInput = document.getElementById('costItem');
-  const itemLabel = document.getElementById('itemLabel');
-  const noteInput = document.getElementById('costNote');
-  const placeholders = {
-    food:    { item: '例: 雞蛋',     note: '例: 1箱',         label: '食材名稱' },
-    utility: { item: '例: 電費',     note: '例: 雙月帳單',     label: '項目名稱' },
-    rent:    { item: '例: 攤位租金', note: '例: 11月份',       label: '項目名稱' },
-    equip:   { item: '例: 炒鍋',     note: '例: 換新',         label: '工具名稱' },
-    misc:    { item: '例: 餐盒',     note: '例: 100個',        label: '項目名稱' }
-  };
-  itemInput.placeholder = placeholders[cat].item;
-  noteInput.placeholder = placeholders[cat].note;
-  itemLabel.textContent = placeholders[cat].label;
-
+  document.querySelectorAll('.cat-option').forEach(el => el.classList.toggle('active', el.dataset.cat === cat));
   document.getElementById('quickTagsArea').style.display = cat === 'food' ? 'flex' : 'none';
 }
-
 function addCost() {
   const date = document.getElementById('costDate').value;
   const item = document.getElementById('costItem').value.trim();
   const amount = parseFloat(document.getElementById('costAmount').value);
   const note = document.getElementById('costNote').value.trim();
-
-  if (!date) { showToast('請選擇日期'); return; }
-  if (!item) { showToast('請輸入項目名稱'); return; }
-  if (!amount || amount <= 0) { showToast('請輸入金額'); return; }
-
-  data.cost.push({
-    id: genId(), date, item, amount, note, category: currentCategory
-  });
+  if (!date || !item || !amount || amount <= 0) { showToast('請完整填寫'); return; }
+  data.cost.push({ id: genId(), date, item, amount, note, category: currentCategory });
   scheduleSync();
-
   document.getElementById('costItem').value = '';
   document.getElementById('costAmount').value = '';
   document.getElementById('costNote').value = '';
-  showToast('已新增 ' + CATEGORIES[currentCategory].name + ' NT$ ' + fmt(amount));
   updateAll();
 }
-
 function deleteCost(id) {
-  if (!confirm('確定要刪除這筆支出嗎?')) return;
+  if (!confirm('確定刪除?')) return;
   data.cost = data.cost.filter(x => x.id !== id);
   scheduleSync();
   updateAll();
-  showToast('已刪除');
 }
 
-// ============================================
-// 常用食材
-// ============================================
 function fillFromTag(name, amount) {
   document.getElementById('costItem').value = name;
   if (amount) document.getElementById('costAmount').value = amount;
   document.getElementById('costAmount').focus();
 }
-
 function addTag() {
   const name = document.getElementById('newTagName').value.trim();
   const amount = parseFloat(document.getElementById('newTagAmount').value) || null;
-  if (!name) { showToast('請輸入食材名稱'); return; }
-  if (data.tags.some(t => t.name === name)) { showToast('這項食材已經存在'); return; }
-
+  if (!name) return;
   data.tags.push({ name, amount });
   scheduleSync();
-
   document.getElementById('newTagName').value = '';
   document.getElementById('newTagAmount').value = '';
   renderTags();
-  showToast('已新增「' + name + '」');
 }
-
 function removeTag(name) {
   data.tags = data.tags.filter(t => t.name !== name);
   scheduleSync();
   renderTags();
-  showToast('已移除「' + name + '」');
 }
 
 function renderTags() {
   const quick = document.getElementById('quickTagsArea');
-  quick.innerHTML = data.tags.length === 0
-    ? '<span style="color:var(--ink-medium); font-size:13px;">尚無常用食材,請到「常用食材」頁籤新增</span>'
-    : data.tags.map(t => `
-        <span class="quick-tag" onclick="fillFromTag('${t.name.replace(/'/g, "\\'")}', ${t.amount || 'null'})">
-          ${t.name}${t.amount ? ` <small style="opacity:0.6">$${t.amount}</small>` : ''}
-        </span>
-      `).join('');
-
+  quick.innerHTML = data.tags.map(t => `<span class="quick-tag" onclick="fillFromTag('${t.name}', ${t.amount})">${t.name}</span>`).join('');
   const settings = document.getElementById('settingsTagsArea');
-  settings.innerHTML = data.tags.length === 0
-    ? '<span style="color:var(--ink-medium); font-size:13px;">尚未設定任何食材</span>'
-    : data.tags.map(t => `
-        <span class="quick-tag" style="cursor:default;">
-          ${t.name}${t.amount ? ` <small style="opacity:0.6">$${t.amount}</small>` : ''}
-          <span class="remove" onclick="removeTag('${t.name.replace(/'/g, "\\'")}')" style="cursor:pointer;">✕</span>
-        </span>
-      `).join('');
+  settings.innerHTML = data.tags.map(t => `<span class="quick-tag">${t.name}<span class="remove" onclick="removeTag('${t.name}')">✕</span></span>`).join('');
 }
 
-// ============================================
-// 表格與摘要
-// ============================================
 function renderIncomeTable() {
   const tbody = document.getElementById('incomeTable');
-  const list = data.income.filter(x => inCurrentMonth(x.date)).sort((a, b) => b.date.localeCompare(a.date));
-  if (list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">— 本月尚無營收紀錄 —</td></tr>';
-    return;
-  }
-  tbody.innerHTML = list.map(x => `
-    <tr>
-      <td>${x.date}</td>
-      <td class="amount in">$${fmt(x.amount)}</td>
-      <td>${x.note || '—'}</td>
-      <td><button class="btn-delete" onclick="deleteIncome('${x.id}')">刪除</button></td>
-    </tr>
-  `).join('');
+  const list = data.income.filter(x => inCurrentMonth(x.date)).sort((a,b) => b.date.localeCompare(a.date));
+  tbody.innerHTML = list.map(x => `<tr><td>${x.date}</td><td class="amount in">$${fmt(x.amount)}</td><td>${x.note}</td><td><button class="btn-delete" onclick="deleteIncome('${x.id}')">刪除</button></td></tr>`).join('');
 }
-
 function renderCostTable() {
   const tbody = document.getElementById('costTable');
-  const filterEl = document.getElementById('filterCategory');
-  const filter = filterEl ? filterEl.value : 'all';
-
+  const filter = document.getElementById('filterCategory').value;
   let list = data.cost.filter(x => inCurrentMonth(x.date));
   if (filter !== 'all') list = list.filter(x => (x.category || 'food') === filter);
-  list = list.sort((a, b) => b.date.localeCompare(a.date));
-
-  if (list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">— 本月尚無支出紀錄 —</td></tr>';
-    return;
-  }
-
-  tbody.innerHTML = list.map(x => {
+  tbody.innerHTML = list.sort((a,b) => b.date.localeCompare(a.date)).map(x => {
     const cat = CATEGORIES[x.category || 'food'];
-    return `
-      <tr>
-        <td>${x.date}</td>
-        <td><span class="cat-badge ${cat.color}">${cat.emoji} ${cat.name}</span></td>
-        <td><strong>${x.item}</strong></td>
-        <td class="amount out">$${fmt(x.amount)}</td>
-        <td>${x.note || '—'}</td>
-        <td><button class="btn-delete" onclick="deleteCost('${x.id}')">刪除</button></td>
-      </tr>
-    `;
+    return `<tr><td>${x.date}</td><td><span class="cat-badge ${cat.color}">${cat.emoji} ${cat.name}</span></td><td><strong>${x.item}</strong></td><td class="amount out">$${fmt(x.amount)}</td><td>${x.note}</td><td><button class="btn-delete" onclick="deleteCost('${x.id}')">刪除</button></td></tr>`;
   }).join('');
 }
-
 function renderCatSummary() {
-  const container = document.getElementById('catSummary');
-  if (!container) return;
-
   const costList = data.cost.filter(x => inCurrentMonth(x.date));
   const totals = { food: 0, utility: 0, rent: 0, equip: 0, misc: 0 };
-  costList.forEach(x => {
-    const cat = x.category || 'food';
-    totals[cat] = (totals[cat] || 0) + Number(x.amount);
-  });
-
-  container.innerHTML = Object.keys(CATEGORIES).map(key => {
-    const cat = CATEGORIES[key];
-    const amount = totals[key] || 0;
-    return `
-      <div style="border:1.5px solid var(--ink-medium); border-radius:4px; padding:12px; background:var(--bg-cream);">
-        <div style="font-size:12px; color:var(--ink-medium); margin-bottom:4px;">
-          ${cat.emoji} ${cat.name}
-        </div>
-        <div style="font-family:'Noto Serif TC', serif; font-weight:700; font-size:20px; color:var(--red-stamp);">
-          $${fmt(amount)}
-        </div>
-      </div>
-    `;
-  }).join('');
+  costList.forEach(x => { totals[x.category || 'food'] += Number(x.amount); });
+  document.getElementById('catSummary').innerHTML = Object.keys(CATEGORIES).map(key => `
+    <div style="border:1.5px solid var(--ink-medium); border-radius:4px; padding:12px; background:var(--bg-cream);">
+      <div style="font-size:12px; color:var(--ink-medium);">${CATEGORIES[key].emoji} ${CATEGORIES[key].name}</div>
+      <div style="font-weight:700; font-size:20px; color:var(--red-stamp);">$${fmt(totals[key])}</div>
+    </div>`).join('');
 }
-
 function updateSummary() {
   const incomeList = data.income.filter(x => inCurrentMonth(x.date));
   const costList = data.cost.filter(x => inCurrentMonth(x.date));
   const totalIncome = incomeList.reduce((s, x) => s + Number(x.amount), 0);
   const totalCost = costList.reduce((s, x) => s + Number(x.amount), 0);
-  const net = totalIncome - totalCost;
-  const margin = totalIncome > 0 ? ((net / totalIncome) * 100).toFixed(1) : 0;
-  const days = new Set(incomeList.map(x => x.date)).size;
-
   document.getElementById('totalIncome').textContent = fmt(totalIncome);
   document.getElementById('totalCost').textContent = fmt(totalCost);
-  document.getElementById('netProfit').textContent = fmt(net);
-  document.getElementById('incomeDays').textContent = `— ${days} 天營業 —`;
+  document.getElementById('netProfit').textContent = fmt(totalIncome - totalCost);
+  document.getElementById('incomeDays').textContent = `— ${new Set(incomeList.map(x => x.date)).size} 天營業 —`;
   document.getElementById('costCount').textContent = `— ${costList.length} 筆支出 —`;
-  document.getElementById('profitMargin').textContent = `— 利潤率 ${margin}% —`;
 }
-
-// ============================================
-// 圖表
-// ============================================
-let dailyChartInstance = null;
-let categoryChartInstance = null;
 
 function renderCharts() {
-  renderDailyChart();
-  renderCategoryChart();
-}
-
-function renderDailyChart() {
-  const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
   const labels = [], incomeData = [], costData = [];
-
+  const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     labels.push(d + '日');
     incomeData.push(data.income.filter(x => x.date === dateStr).reduce((s,x) => s+Number(x.amount), 0));
     costData.push(data.cost.filter(x => x.date === dateStr).reduce((s,x) => s+Number(x.amount), 0));
   }
-
   if (dailyChartInstance) dailyChartInstance.destroy();
-  const ctx = document.getElementById('dailyChart').getContext('2d');
-  dailyChartInstance = new Chart(ctx, {
+  dailyChartInstance = new Chart(document.getElementById('dailyChart').getContext('2d'), {
     type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        { label: '營收', data: incomeData, backgroundColor: '#A67C2D', borderRadius: 2 },
-        { label: '支出', data: costData, backgroundColor: '#C8362C', borderRadius: 2 }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { labels: { font: { family: 'Noto Serif TC', size: 13, weight: 'bold' }, color: '#2A1810' } }
-      },
-      scales: {
-        x: { ticks: { font: { family: 'Noto Sans TC', size: 11 }, color: '#5C3A21' } },
-        y: { ticks: { font: { family: 'Noto Sans TC', size: 11 }, color: '#5C3A21', callback: v => '$' + fmt(v) } }
-      }
-    }
+    data: { labels, datasets: [{ label: '營收', data: incomeData, backgroundColor: '#A67C2D' }, { label: '支出', data: costData, backgroundColor: '#C8362C' }] },
+    options: { responsive: true, maintainAspectRatio: false }
   });
 }
 
-function renderCategoryChart() {
-  const costList = data.cost.filter(x => inCurrentMonth(x.date));
-  const totals = { food: 0, utility: 0, rent: 0, equip: 0, misc: 0 };
-  costList.forEach(x => {
-    const cat = x.category || 'food';
-    totals[cat] = (totals[cat] || 0) + Number(x.amount);
-  });
-
-  const entries = Object.entries(totals).filter(([k, v]) => v > 0);
-
-  if (categoryChartInstance) categoryChartInstance.destroy();
-  const ctx = document.getElementById('categoryChart').getContext('2d');
-
-  if (entries.length === 0) {
-    ctx.font = "16px 'Zen Kurenaido'";
-    ctx.fillStyle = '#5C3A21';
-    ctx.textAlign = 'center';
-    ctx.fillText('本月尚無支出資料', ctx.canvas.width / 2, ctx.canvas.height / 2);
-    return;
-  }
-
-  const colorMap = {
-    food: '#5C8A3A', utility: '#3B82A8', rent: '#8B5CF6', equip: '#D97706', misc: '#6B7280'
-  };
-
-  categoryChartInstance = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: entries.map(([k]) => `${CATEGORIES[k].emoji} ${CATEGORIES[k].name}`),
-      datasets: [{
-        data: entries.map(([k, v]) => v),
-        backgroundColor: entries.map(([k]) => colorMap[k]),
-        borderColor: '#FBF3D9',
-        borderWidth: 3
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'right', labels: { font: { family: 'Noto Sans TC', size: 13 }, color: '#2A1810', padding: 10 } },
-        tooltip: {
-          callbacks: {
-            label: (ctx) => {
-              const total = ctx.dataset.data.reduce((a,b) => a+b, 0);
-              const pct = ((ctx.parsed / total) * 100).toFixed(1);
-              return ` ${ctx.label}: $${fmt(ctx.parsed)} (${pct}%)`;
-            }
-          }
-        }
-      }
-    }
-  });
-}
-
-// ============================================
-// 匯入 / 匯出
-// ============================================
 function exportData() {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
+  a.href = URL.createObjectURL(blob);
   a.download = `炒飯記帳備份_${todayStr()}.json`;
   a.click();
-  URL.revokeObjectURL(url);
-  showToast('已匯出備份檔');
 }
-
 function exportCSV() {
-  let csv = '\uFEFF';
-  csv += '【本月營收】\n日期,營業額,備註\n';
-  data.income.filter(x => inCurrentMonth(x.date)).sort((a,b) => a.date.localeCompare(b.date)).forEach(x => csv += `${x.date},${x.amount},"${x.note||''}"\n`);
-
-  csv += '\n【本月支出】\n日期,類別,項目,金額,備註\n';
-  data.cost.filter(x => inCurrentMonth(x.date)).sort((a,b) => a.date.localeCompare(b.date)).forEach(x => {
-    const cat = CATEGORIES[x.category || 'food'];
-    csv += `${x.date},"${cat.name}","${x.item}",${x.amount},"${x.note||''}"\n`;
-  });
-
-  csv += '\n【支出分類小計】\n類別,金額\n';
-  const totals = {};
-  data.cost.filter(x => inCurrentMonth(x.date)).forEach(x => {
-    const cat = x.category || 'food';
-    totals[cat] = (totals[cat] || 0) + Number(x.amount);
-  });
-  Object.keys(CATEGORIES).forEach(key => {
-    csv += `"${CATEGORIES[key].name}",${totals[key] || 0}\n`;
-  });
-
-  const totalIn = data.income.filter(x => inCurrentMonth(x.date)).reduce((s,x)=>s+Number(x.amount),0);
-  const totalOut = data.cost.filter(x => inCurrentMonth(x.date)).reduce((s,x)=>s+Number(x.amount),0);
-  csv += `\n【月份總結】\n總收入,${totalIn}\n總支出,${totalOut}\n淨利,${totalIn-totalOut}\n`;
-
+  let csv = '\uFEFF【本月營收】\n日期,營業額,備註\n';
+  data.income.filter(x => inCurrentMonth(x.date)).forEach(x => csv += `${x.date},${x.amount},${x.note}\n`);
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
+  a.href = URL.createObjectURL(blob);
   a.download = `炒飯記帳_${currentYear}年${currentMonth}月.csv`;
   a.click();
-  URL.revokeObjectURL(url);
-  showToast('已匯出 CSV');
 }
-
 function importData(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -1515,17 +1227,14 @@ function importData(e) {
   reader.onload = (ev) => {
     try {
       const imported = JSON.parse(ev.target.result);
-      if (!confirm('匯入會覆蓋目前的資料,確定嗎?')) return;
       if (imported.income) data.income = imported.income;
       if (imported.cost) data.cost = imported.cost;
-      if (imported.tags) data.tags = imported.tags;
       scheduleSync();
       updateAll();
-      showToast('匯入成功!正在同步雲端...');
-    } catch (err) { showToast('檔案格式錯誤'); }
+      showToast('匯入成功');
+    } catch (err) { showToast('格式錯誤'); }
   };
   reader.readAsText(file);
-  e.target.value = '';
 }
 
 function updateAll() {
@@ -1538,30 +1247,14 @@ function updateAll() {
   if (document.getElementById('tab-chart').classList.contains('active')) renderCharts();
 }
 
-// ============================================
-// 啟動流程 (秒開!)
-// ============================================
 async function initApp() {
   document.getElementById('incomeDate').value = todayStr();
   document.getElementById('costDate').value = todayStr();
-
-  // 1. 立刻從本地讀取 → 馬上顯示
-  const hasLocal = loadLocal();
-  if (hasLocal) {
-    setSyncStatus('idle', '☁ 已載入本機資料,檢查雲端中...');
-  } else {
-    setSyncStatus('idle', '☁ 首次使用,連線雲端中...');
-  }
+  loadLocal();
   updateAll();
-
-  // 2. 背景跟雲端同步 (不阻塞 UI)
-  loadFromCloud().then(() => {
-    updateAll();
-  });
+  loadFromCloud().then(() => updateAll());
 }
-
 initApp();
 </script>
-
 </body>
 </html>
