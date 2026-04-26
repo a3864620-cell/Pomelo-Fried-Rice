@@ -1,0 +1,20 @@
+{
+  "name": "炒飯記帳本",
+  "short_name": "炒飯記帳",
+  "description": "市場攤販專用的記帳系統",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFF8E7",
+  "theme_color": "#2A1810",
+  "lang": "zh-TW",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
