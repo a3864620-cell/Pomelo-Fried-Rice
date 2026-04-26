@@ -816,7 +816,7 @@
 
 <script>
 // ============================================
-// PWA + Service Worker (離線可用)
+// PWA + Service Worker (離線可用 + 自動更新)
 // ============================================
 // Service Worker 必須是同源外部檔案,不能用 Blob URL
 // (Blob URL 在 Safari 等瀏覽器會被擋下來)
@@ -825,10 +825,34 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js')
       .then(reg => {
         console.log('[PWA] Service Worker 已註冊', reg.scope);
+
+        // 每次打開 App 都檢查有沒有新版
+        reg.update();
+
+        // 偵測到新版 SW 安裝完成 → 立刻接手
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          if (!newWorker) return;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('[PWA] 偵測到新版,正在更新...');
+              newWorker.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        });
       })
       .catch(err => {
         console.log('[PWA] Service Worker 註冊失敗:', err);
       });
+
+    // SW 換新後,重新整理頁面拿最新內容 (只重整一次,避免無窮迴圈)
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      console.log('[PWA] Service Worker 已更新,重新整理...');
+      window.location.reload();
+    });
   });
 }
 
