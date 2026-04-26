@@ -1,0 +1,1370 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>炒飯記帳本</title>
+
+<meta name="theme-color" content="#2A1810">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="炒飯記帳">
+<link rel="apple-touch-icon" href="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20512%20512%22%3E%3Crect%20width%3D%22512%22%20height%3D%22512%22%20fill%3D%22%23C8362C%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2255%25%22%20dominant-baseline%3D%22central%22%20text-anchor%3D%22middle%22%20font-size%3D%22260%22%3E%F0%9F%8D%9A%3C%2Ftext%3E%3C%2Fsvg%3E">
+<link rel="manifest" id="manifest-link">
+
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;500;600;700;900&family=Noto+Sans+TC:wght@400;500;700;900&family=Zen+Kurenaido&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg-cream: #FFF8E7;
+    --bg-paper: #FBF3D9;
+    --ink-dark: #2A1810;
+    --ink-medium: #5C3A21;
+    --red-stamp: #C8362C;
+    --red-deep: #8B1A1A;
+    --gold: #D4A24C;
+    --gold-deep: #A67C2D;
+    --green-fresh: #5C8A3A;
+    --green-deep: #3D5F26;
+    --cat-food: #5C8A3A;
+    --cat-utility: #3B82A8;
+    --cat-rent: #8B5CF6;
+    --cat-equip: #D97706;
+    --cat-misc: #6B7280;
+    --shadow-soft: rgba(42, 24, 16, 0.12);
+    --shadow-strong: rgba(42, 24, 16, 0.25);
+  }
+
+  html, body {
+    background: var(--bg-cream);
+    color: var(--ink-dark);
+    font-family: 'Noto Sans TC', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+    /* 防止長按文字被全選，讓它更像一個原生 App */
+    -webkit-user-select: none; 
+    user-select: none; 
+    -webkit-touch-callout: none;
+  }
+
+  /* 解除輸入框的選取限制 */
+  input, select, textarea { 
+    -webkit-user-select: auto; 
+    user-select: auto; 
+  }
+
+  /* 紙張紋理背景 */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(212, 162, 76, 0.08) 0%, transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(200, 54, 44, 0.06) 0%, transparent 50%),
+      url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.08'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px 20px 80px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* === 頁首 === */
+  header {
+    text-align: center;
+    padding: 32px 20px 40px;
+    position: relative;
+  }
+
+  .header-banner {
+    display: inline-block;
+    position: relative;
+    padding: 16px 48px;
+  }
+
+  .header-banner::before,
+  .header-banner::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 60px;
+    height: 2px;
+    background: var(--ink-medium);
+  }
+  .header-banner::before { left: -50px; }
+  .header-banner::after { right: -50px; }
+
+  h1 {
+    font-family: 'Noto Serif TC', serif;
+    font-weight: 900;
+    font-size: clamp(28px, 5vw, 44px);
+    color: var(--red-stamp);
+    letter-spacing: 0.15em;
+    line-height: 1.2;
+    text-shadow: 2px 2px 0 var(--bg-cream), 4px 4px 0 var(--shadow-soft);
+  }
+
+  .subtitle {
+    font-family: 'Zen Kurenaido', cursive;
+    font-size: 16px;
+    color: var(--ink-medium);
+    margin-top: 8px;
+    letter-spacing: 0.3em;
+  }
+
+  /* 印章 */
+  .stamp {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 80px;
+    height: 80px;
+    background: var(--red-stamp);
+    color: var(--bg-cream);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Noto Serif TC', serif;
+    font-weight: 900;
+    font-size: 14px;
+    line-height: 1.1;
+    text-align: center;
+    transform: rotate(-8deg);
+    border: 3px double var(--bg-cream);
+    box-shadow: 0 0 0 3px var(--red-stamp), 4px 4px 12px var(--shadow-strong);
+    letter-spacing: 0.1em;
+  }
+
+  /* === 分頁切換 === */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 24px;
+    border-bottom: 3px solid var(--ink-dark);
+    flex-wrap: wrap;
+  }
+
+  .tab {
+    background: var(--bg-paper);
+    border: 2px solid var(--ink-dark);
+    border-bottom: none;
+    padding: 12px 20px;
+    font-family: 'Noto Serif TC', serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink-medium);
+    cursor: pointer;
+    border-radius: 8px 8px 0 0;
+    transition: all 0.2s;
+    margin-bottom: -3px;
+    letter-spacing: 0.1em;
+  }
+
+  .tab:hover { background: #F5E5C0; }
+
+  .tab.active {
+    background: var(--ink-dark);
+    color: var(--gold);
+    border-color: var(--ink-dark);
+  }
+
+  /* === 卡片 === */
+  .card {
+    background: var(--bg-paper);
+    border: 2px solid var(--ink-dark);
+    border-radius: 4px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: 4px 4px 0 var(--ink-dark), 8px 8px 16px var(--shadow-soft);
+    position: relative;
+  }
+
+  .card-title {
+    font-family: 'Noto Serif TC', serif;
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--ink-dark);
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 2px dashed var(--gold-deep);
+    letter-spacing: 0.1em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .card-title::before {
+    content: '◆';
+    color: var(--red-stamp);
+    font-size: 14px;
+  }
+
+  /* === 月份統計卡片 === */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .summary-card {
+    background: var(--bg-paper);
+    border: 2px solid var(--ink-dark);
+    border-radius: 4px;
+    padding: 20px;
+    box-shadow: 4px 4px 0 var(--ink-dark);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .summary-card.income { background: linear-gradient(135deg, #FBF3D9 0%, #F0E0B8 100%); }
+  .summary-card.cost { background: linear-gradient(135deg, #FBF3D9 0%, #F5D6C8 100%); }
+  .summary-card.profit { background: linear-gradient(135deg, #FBF3D9 0%, #DCE8C8 100%); }
+
+  .summary-label {
+    font-family: 'Noto Serif TC', serif;
+    font-size: 14px;
+    color: var(--ink-medium);
+    letter-spacing: 0.2em;
+    margin-bottom: 8px;
+  }
+
+  .summary-value {
+    font-family: 'Noto Serif TC', serif;
+    font-weight: 900;
+    font-size: 36px;
+    color: var(--ink-dark);
+    line-height: 1;
+  }
+
+  .summary-card.income .summary-value { color: var(--gold-deep); }
+  .summary-card.cost .summary-value { color: var(--red-stamp); }
+  .summary-card.profit .summary-value { color: var(--green-deep); }
+
+  .summary-value::before {
+    content: 'NT$ ';
+    font-size: 20px;
+    font-weight: 500;
+    margin-right: 4px;
+  }
+
+  .summary-sub {
+    font-size: 12px;
+    color: var(--ink-medium);
+    margin-top: 6px;
+    font-family: 'Zen Kurenaido', cursive;
+    letter-spacing: 0.1em;
+  }
+
+  /* === 月份選擇器 === */
+  .month-picker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 24px;
+    background: var(--bg-paper);
+    padding: 16px;
+    border: 2px solid var(--ink-dark);
+    border-radius: 4px;
+    box-shadow: 4px 4px 0 var(--ink-dark);
+  }
+
+  .month-picker button {
+    background: var(--ink-dark);
+    color: var(--gold);
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 18px;
+    font-weight: 700;
+    transition: transform 0.15s;
+  }
+
+  .month-picker button:hover { transform: scale(1.1); }
+  .month-picker button:active { transform: scale(0.95); }
+
+  .month-display {
+    font-family: 'Noto Serif TC', serif;
+    font-weight: 700;
+    font-size: 22px;
+    color: var(--ink-dark);
+    letter-spacing: 0.1em;
+    min-width: 200px;
+    text-align: center;
+  }
+
+  /* === 表單 === */
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+
+  .form-group label {
+    font-family: 'Noto Serif TC', serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-medium);
+    letter-spacing: 0.1em;
+  }
+
+  input, select, textarea {
+    background: var(--bg-cream);
+    border: 2px solid var(--ink-medium);
+    padding: 10px 12px;
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 15px;
+    color: var(--ink-dark);
+    border-radius: 2px;
+    transition: all 0.15s;
+    width: 100%;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--red-stamp);
+    box-shadow: 0 0 0 3px rgba(200, 54, 44, 0.15);
+  }
+
+  /* === 按鈕 === */
+  .btn {
+    background: var(--ink-dark);
+    color: var(--gold);
+    border: none;
+    padding: 12px 24px;
+    font-family: 'Noto Serif TC', serif;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 2px;
+    letter-spacing: 0.15em;
+    transition: all 0.15s;
+    box-shadow: 3px 3px 0 var(--gold-deep);
+  }
+
+  .btn:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--gold-deep); }
+  .btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--gold-deep); }
+
+  .btn-red {
+    background: var(--red-stamp);
+    color: var(--bg-cream);
+    box-shadow: 3px 3px 0 var(--red-deep);
+  }
+  .btn-red:hover { box-shadow: 4px 4px 0 var(--red-deep); }
+  .btn-red:active { box-shadow: 1px 1px 0 var(--red-deep); }
+
+  /* === 常用食材標籤 === */
+  .quick-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 12px;
+    background: var(--bg-cream);
+    border: 1px dashed var(--gold-deep);
+    border-radius: 2px;
+  }
+
+  .quick-tag {
+    background: var(--bg-paper);
+    border: 1.5px solid var(--ink-medium);
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-dark);
+    cursor: pointer;
+    border-radius: 20px;
+    transition: all 0.15s;
+    font-family: 'Noto Sans TC';
+  }
+
+  .quick-tag:hover {
+    background: var(--gold);
+    border-color: var(--gold-deep);
+    color: var(--ink-dark);
+    transform: translateY(-1px);
+  }
+
+  .quick-tag .remove {
+    margin-left: 6px;
+    color: var(--red-stamp);
+    font-weight: 700;
+  }
+
+  /* === 表格 === */
+  .table-wrapper {
+    overflow-x: auto;
+    border: 2px solid var(--ink-dark);
+    background: var(--bg-cream);
+  }
+
+  table { width: 100%; border-collapse: collapse; }
+
+  th {
+    background: var(--ink-dark);
+    color: var(--gold);
+    padding: 12px 10px;
+    text-align: left;
+    font-family: 'Noto Serif TC', serif;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 10px;
+    border-bottom: 1px dashed var(--gold-deep);
+    font-size: 14px;
+  }
+
+  tbody tr:hover { background: rgba(212, 162, 76, 0.1); }
+  tbody tr:last-child td { border-bottom: none; }
+
+  .amount {
+    font-family: 'Noto Serif TC', serif;
+    font-weight: 600;
+    text-align: right;
+  }
+  .amount.in { color: var(--gold-deep); }
+  .amount.out { color: var(--red-stamp); }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--ink-medium);
+    font-family: 'Zen Kurenaido', cursive;
+    font-size: 16px;
+    letter-spacing: 0.2em;
+  }
+
+  /* === 圖表區 === */
+  .chart-container {
+    background: var(--bg-cream);
+    padding: 20px;
+    border: 1px dashed var(--gold-deep);
+    height: 320px;
+    position: relative;
+  }
+
+  /* === 分頁內容 === */
+  .tab-content { display: none; animation: fadeIn 0.3s ease; }
+  .tab-content.active { display: block; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* === 操作列 === */
+  .action-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+  /* === 提示訊息 === */
+  .toast {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--ink-dark);
+    color: var(--gold);
+    padding: 14px 28px;
+    border-radius: 2px;
+    font-family: 'Noto Serif TC', serif;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    box-shadow: 4px 4px 0 var(--red-stamp);
+    z-index: 1000;
+    transition: transform 0.3s;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* === 分類標籤 === */
+  .cat-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    color: white;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+  .cat-food { background: var(--cat-food); }
+  .cat-utility { background: var(--cat-utility); }
+  .cat-rent { background: var(--cat-rent); }
+  .cat-equip { background: var(--cat-equip); }
+  .cat-misc { background: var(--cat-misc); }
+
+  /* === 分類選擇器 === */
+  .cat-selector {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .cat-option {
+    padding: 8px 14px;
+    border: 2px solid var(--ink-medium);
+    background: var(--bg-cream);
+    cursor: pointer;
+    border-radius: 4px;
+    font-family: 'Noto Serif TC', serif;
+    font-weight: 600;
+    font-size: 13px;
+    transition: all 0.15s;
+    color: var(--ink-dark);
+  }
+  .cat-option:hover { background: var(--gold); }
+  .cat-option.active {
+    background: var(--ink-dark);
+    color: var(--gold);
+    border-color: var(--ink-dark);
+  }
+
+  /* === RWD === */
+  @media (max-width: 600px) {
+    .container { padding: 16px 12px 60px; }
+    .stamp { width: 60px; height: 60px; font-size: 11px; top: 10px; right: 10px; }
+    .summary-value { font-size: 28px; }
+    .header-banner { padding: 16px 20px; }
+    .header-banner::before, .header-banner::after { display: none; }
+    .tab { padding: 10px 14px; font-size: 13px; }
+    .card { padding: 16px; }
+    th, td { padding: 8px 6px; font-size: 13px; }
+  }
+
+  /* === 刪除按鈕 === */
+  .btn-delete {
+    background: transparent;
+    color: var(--red-stamp);
+    border: 1px solid var(--red-stamp);
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    border-radius: 2px;
+    transition: all 0.15s;
+    box-shadow: none;
+  }
+  .btn-delete:hover { background: var(--red-stamp); color: var(--bg-cream); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="stamp">炒飯<br>記帳本</div>
+  <div class="header-banner">
+    <h1>炒飯記帳簿</h1>
+    <div class="subtitle">F R I E D &nbsp; R I C E &nbsp; L E D G E R</div>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="month-picker">
+    <button onclick="changeMonth(-1)">‹</button>
+    <div class="month-display" id="monthDisplay">2026 年 4 月</div>
+    <button onclick="changeMonth(1)">›</button>
+  </div>
+
+  <div class="summary-grid">
+    <div class="summary-card income">
+      <div class="summary-label">本月總收入</div>
+      <div class="summary-value" id="totalIncome">0</div>
+      <div class="summary-sub" id="incomeDays">— 0 天營業 —</div>
+    </div>
+    <div class="summary-card cost">
+      <div class="summary-label">本月總支出</div>
+      <div class="summary-value" id="totalCost">0</div>
+      <div class="summary-sub" id="costCount">— 0 筆支出 —</div>
+    </div>
+    <div class="summary-card profit">
+      <div class="summary-label">本月實際淨賺</div>
+      <div class="summary-value" id="netProfit">0</div>
+      <div class="summary-sub" id="profitMargin">— 利潤率 0% —</div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('income')">每日營收</button>
+    <button class="tab" onclick="switchTab('cost')">支出記錄</button>
+    <button class="tab" onclick="switchTab('chart')">月報圖表</button>
+    <button class="tab" onclick="switchTab('settings')">常用食材</button>
+  </div>
+
+  <div id="tab-income" class="tab-content active">
+    <div class="card">
+      <div class="card-title">記錄今日營收</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>日期</label>
+          <input type="date" id="incomeDate">
+        </div>
+        <div class="form-group">
+          <label>營業額 (元)</label>
+          <input type="number" id="incomeAmount" placeholder="例: 3500" min="0">
+        </div>
+        <div class="form-group">
+          <label>備註 (選填)</label>
+          <input type="text" id="incomeNote" placeholder="例: 今天客人多">
+        </div>
+      </div>
+      <button class="btn btn-red" onclick="addIncome()">＋ 新增營收</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">本月營收明細</div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>營業額</th>
+              <th>備註</th>
+              <th style="width:80px;">操作</th>
+            </tr>
+          </thead>
+          <tbody id="incomeTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-cost" class="tab-content">
+    <div class="card">
+      <div class="card-title">記錄支出</div>
+
+      <label style="font-family:'Noto Serif TC', serif; font-size:13px; font-weight:600; color:var(--ink-medium); letter-spacing:0.1em; display:block; margin-bottom:8px;">支出類別</label>
+      <div class="cat-selector" id="catSelector">
+        <div class="cat-option active" data-cat="food" onclick="selectCategory('food')">🥬 食材</div>
+        <div class="cat-option" data-cat="utility" onclick="selectCategory('utility')">💡 水電瓦斯</div>
+        <div class="cat-option" data-cat="rent" onclick="selectCategory('rent')">🏠 租金</div>
+        <div class="cat-option" data-cat="equip" onclick="selectCategory('equip')">🔧 設備工具</div>
+        <div class="cat-option" data-cat="misc" onclick="selectCategory('misc')">📦 雜項</div>
+      </div>
+
+      <div class="quick-tags" id="quickTagsArea">
+        </div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label>日期</label>
+          <input type="date" id="costDate">
+        </div>
+        <div class="form-group">
+          <label id="itemLabel">項目名稱</label>
+          <input type="text" id="costItem" placeholder="例: 雞蛋">
+        </div>
+        <div class="form-group">
+          <label>金額 (元)</label>
+          <input type="number" id="costAmount" placeholder="例: 150" min="0">
+        </div>
+        <div class="form-group">
+          <label>數量/備註 (選填)</label>
+          <input type="text" id="costNote" placeholder="例: 1箱">
+        </div>
+      </div>
+      <button class="btn btn-red" onclick="addCost()">＋ 新增支出</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">本月支出分類小計</div>
+      <div id="catSummary" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px;">
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">本月支出明細</div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:13px; color:var(--ink-medium); margin-right:8px;">篩選類別:</label>
+        <select id="filterCategory" onchange="renderCostTable()" style="width:auto; display:inline-block;">
+          <option value="all">全部</option>
+          <option value="food">🥬 食材</option>
+          <option value="utility">💡 水電瓦斯</option>
+          <option value="rent">🏠 租金</option>
+          <option value="equip">🔧 設備工具</option>
+          <option value="misc">📦 雜項</option>
+        </select>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>類別</th>
+              <th>項目</th>
+              <th>金額</th>
+              <th>備註</th>
+              <th style="width:80px;">操作</th>
+            </tr>
+          </thead>
+          <tbody id="costTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-chart" class="tab-content">
+    <div class="card">
+      <div class="card-title">每日營收 vs 支出</div>
+      <div class="chart-container"><canvas id="dailyChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">支出分類比例</div>
+      <div class="chart-container"><canvas id="categoryChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">資料管理</div>
+      <div class="action-row">
+        <button class="btn" onclick="exportData()">📥 匯出備份 (JSON)</button>
+        <button class="btn" onclick="exportCSV()">📊 匯出 Excel (CSV)</button>
+        <button class="btn" onclick="document.getElementById('importFile').click()">📂 匯入備份</button>
+        <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-settings" class="tab-content">
+    <div class="card">
+      <div class="card-title">常用食材清單</div>
+      <p style="color: var(--ink-medium); font-size: 13px; margin-bottom: 14px; font-family: 'Zen Kurenaido', cursive; letter-spacing: 0.1em;">
+        ※ 在「支出記錄」頁籤點一下標籤就能快速填入名稱
+      </p>
+      <div class="form-grid" style="grid-template-columns: 1fr 1fr auto;">
+        <div class="form-group">
+          <label>食材名稱</label>
+          <input type="text" id="newTagName" placeholder="例: 高麗菜">
+        </div>
+        <div class="form-group">
+          <label>常見金額 (選填)</label>
+          <input type="number" id="newTagAmount" placeholder="例: 80">
+        </div>
+        <div class="form-group">
+          <label>&nbsp;</label>
+          <button class="btn" onclick="addTag()">＋ 新增</button>
+        </div>
+      </div>
+
+      <div style="margin-top: 20px;">
+        <div class="quick-tags" id="settingsTagsArea" style="border-style: solid; border-color: var(--ink-medium);">
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div id="loadingMask" style="display:none; position:fixed; inset:0; background:rgba(42,24,16,0.85); z-index:9999; flex-direction:column; align-items:center; justify-content:center; color:#D4A24C;">
+  <div style="width:50px; height:50px; border:4px solid rgba(212,162,76,0.2); border-top-color:#D4A24C; border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:16px;"></div>
+  <div style="font-family:'Noto Serif TC', serif; font-weight:700; font-size:16px; letter-spacing:0.1em;" id="loadingText">資料同步中...</div>
+  <style>@keyframes spin { to { transform:rotate(360deg); } }</style>
+</div>
+
+<script>
+// ============================================
+// PWA 手機 App 設定 (動態產生 manifest，讓瀏覽器可辨識)
+// ============================================
+const APP_ICON = "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20512%20512%22%3E%3Crect%20width%3D%22512%22%20height%3D%22512%22%20fill%3D%22%23C8362C%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2255%25%22%20dominant-baseline%3D%22central%22%20text-anchor%3D%22middle%22%20font-size%3D%22260%22%3E%F0%9F%8D%9A%3C%2Ftext%3E%3C%2Fsvg%3E";
+
+const manifestJSON = {
+  name: "炒飯記帳本",
+  short_name: "炒飯記帳",
+  start_url: window.location.href.split('?')[0],
+  display: "standalone",
+  background_color: "#FFF8E7",
+  theme_color: "#2A1810",
+  icons: [{ src: APP_ICON, sizes: "512x512", type: "image/svg+xml", purpose: "any maskable" }]
+};
+const manifestBlob = new Blob([JSON.stringify(manifestJSON)], { type: 'application/manifest+json' });
+document.getElementById('manifest-link').href = URL.createObjectURL(manifestBlob);
+
+// ============================================
+// 分類設定
+// ============================================
+const CATEGORIES = {
+  food:    { name: '食材',     emoji: '🥬', color: 'cat-food' },
+  utility: { name: '水電瓦斯', emoji: '💡', color: 'cat-utility' },
+  rent:    { name: '租金',     emoji: '🏠', color: 'cat-rent' },
+  equip:   { name: '設備工具', emoji: '🔧', color: 'cat-equip' },
+  misc:    { name: '雜項',     emoji: '📦', color: 'cat-misc' }
+};
+
+let currentCategory = 'food';
+
+// ============================================
+// 資料儲存 (Google Sheets API)
+// ============================================
+const API_URL = 'https://script.google.com/macros/s/AKfycbyHiD5DLVFZ82WvJUPLSuM_VkmmEukd-9Er_uzbVSfNkEnXRq2a388jtjVqVn_AdZQ8/exec';
+
+let data = {
+  income: [],   
+  cost: [],     
+  tags: [
+    { name: '雞蛋', amount: 150 },
+    { name: '白米', amount: 600 },
+    { name: '青蔥', amount: 50 },
+    { name: '高麗菜', amount: 80 },
+    { name: '紅蘿蔔', amount: 40 },
+    { name: '醬油', amount: 100 },
+    { name: '食用油', amount: 250 },
+    { name: '雞肉', amount: 200 },
+    { name: '蝦仁', amount: 300 },
+    { name: '火腿', amount: 120 }
+  ]
+};
+
+let currentYear = new Date().getFullYear();
+let currentMonth = new Date().getMonth() + 1;
+
+// ============================================
+// Loading 防呆控制
+// ============================================
+function showLoading(msg) {
+  document.getElementById('loadingText').textContent = msg;
+  document.getElementById('loadingMask').style.display = 'flex';
+}
+
+function hideLoading() {
+  document.getElementById('loadingMask').style.display = 'none';
+}
+
+// ============================================
+// 雲端載入 / 儲存
+// ============================================
+async function loadData() {
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'load' })
+    });
+    const parsed = await res.json();
+    if (parsed.income && parsed.income.length > 0) data.income = parsed.income;
+    if (parsed.cost && parsed.cost.length > 0) data.cost = parsed.cost;
+    if (parsed.tags && parsed.tags.length > 0) data.tags = parsed.tags;
+  } catch (e) { 
+    console.error(e); 
+    showToast('讀取雲端資料失敗，請檢查網路');
+  }
+}
+
+async function saveData() {
+  showLoading('資料同步雲端中...'); // 打開遮罩防呆
+  try {
+    await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'save', data: data })
+    });
+  } catch (error) {
+    console.error(error);
+    showToast('雲端同步失敗，請檢查網路');
+  } finally {
+    hideLoading(); // 執行完畢後關閉遮罩
+  }
+}
+
+// ============================================
+// 工具函式
+// ============================================
+function fmt(n) { return Number(n || 0).toLocaleString('zh-TW'); }
+
+function todayStr() {
+  const d = new Date(); 
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function inCurrentMonth(dateStr) { 
+  const [y, m] = dateStr.split('-').map(Number); 
+  return y === currentYear && m === currentMonth; 
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+function genId() { 
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); 
+}
+
+// ============================================
+// UI 切換
+// ============================================
+function changeMonth(delta) {
+  currentMonth += delta;
+  if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+  if (currentMonth < 1) { currentMonth = 12; currentYear--; }
+  updateAll();
+}
+
+function updateMonthDisplay() {
+  document.getElementById('monthDisplay').textContent = `${currentYear} 年 ${currentMonth} 月`;
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+
+  if (name === 'chart') setTimeout(renderCharts, 50);
+}
+
+// ============================================
+// 新增營收
+// ============================================
+async function addIncome() {
+  const date = document.getElementById('incomeDate').value;
+  const amount = parseFloat(document.getElementById('incomeAmount').value);
+  const note = document.getElementById('incomeNote').value.trim();
+
+  if (!date) { showToast('請選擇日期'); return; }
+  if (!amount || amount <= 0) { showToast('請輸入營業額'); return; }
+
+  data.income.push({ id: genId(), date, amount, note });
+  await saveData();
+
+  document.getElementById('incomeAmount').value = '';
+  document.getElementById('incomeNote').value = '';
+  showToast('已新增營收 NT$ ' + fmt(amount));
+  updateAll();
+}
+
+async function deleteIncome(id) {
+  if (!confirm('確定要刪除這筆營收嗎?')) return;
+  data.income = data.income.filter(x => x.id !== id);
+  await saveData();
+  updateAll();
+  showToast('已刪除');
+}
+
+// ============================================
+// 新增支出 (包含類別)
+// ============================================
+function selectCategory(cat) {
+  currentCategory = cat;
+  document.querySelectorAll('.cat-option').forEach(el => {
+    el.classList.toggle('active', el.dataset.cat === cat);
+  });
+
+  const itemInput = document.getElementById('costItem');
+  const itemLabel = document.getElementById('itemLabel');
+  const noteInput = document.getElementById('costNote');
+  const placeholders = {
+    food:    { item: '例: 雞蛋',     note: '例: 1箱',         label: '食材名稱' },
+    utility: { item: '例: 電費',     note: '例: 雙月帳單',     label: '項目名稱' },
+    rent:    { item: '例: 攤位租金', note: '例: 11月份',       label: '項目名稱' },
+    equip:   { item: '例: 炒鍋',     note: '例: 換新',         label: '工具名稱' },
+    misc:    { item: '例: 餐盒',     note: '例: 100個',        label: '項目名稱' }
+  };
+  itemInput.placeholder = placeholders[cat].item;
+  noteInput.placeholder = placeholders[cat].note;
+  itemLabel.textContent = placeholders[cat].label;
+
+  document.getElementById('quickTagsArea').style.display = cat === 'food' ? 'flex' : 'none';
+}
+
+async function addCost() {
+  const date = document.getElementById('costDate').value;
+  const item = document.getElementById('costItem').value.trim();
+  const amount = parseFloat(document.getElementById('costAmount').value);
+  const note = document.getElementById('costNote').value.trim();
+
+  if (!date) { showToast('請選擇日期'); return; }
+  if (!item) { showToast('請輸入項目名稱'); return; }
+  if (!amount || amount <= 0) { showToast('請輸入金額'); return; }
+
+  data.cost.push({
+    id: genId(), date, item, amount, note, category: currentCategory
+  });
+  await saveData();
+
+  document.getElementById('costItem').value = '';
+  document.getElementById('costAmount').value = '';
+  document.getElementById('costNote').value = '';
+  showToast('已新增 ' + CATEGORIES[currentCategory].name + ' NT$ ' + fmt(amount));
+  updateAll();
+}
+
+async function deleteCost(id) {
+  if (!confirm('確定要刪除這筆支出嗎?')) return;
+  data.cost = data.cost.filter(x => x.id !== id);
+  await saveData();
+  updateAll();
+  showToast('已刪除');
+}
+
+// ============================================
+// 常用食材標籤
+// ============================================
+function fillFromTag(name, amount) {
+  document.getElementById('costItem').value = name;
+  if (amount) document.getElementById('costAmount').value = amount;
+  document.getElementById('costAmount').focus();
+}
+
+async function addTag() {
+  const name = document.getElementById('newTagName').value.trim();
+  const amount = parseFloat(document.getElementById('newTagAmount').value) || null;
+  if (!name) { showToast('請輸入食材名稱'); return; }
+  if (data.tags.some(t => t.name === name)) { showToast('這項食材已經存在'); return; }
+  
+  data.tags.push({ name, amount });
+  await saveData();
+  
+  document.getElementById('newTagName').value = '';
+  document.getElementById('newTagAmount').value = '';
+  renderTags();
+  showToast('已新增「' + name + '」');
+}
+
+async function removeTag(name) {
+  data.tags = data.tags.filter(t => t.name !== name);
+  await saveData();
+  renderTags();
+  showToast('已移除「' + name + '」');
+}
+
+function renderTags() {
+  const quick = document.getElementById('quickTagsArea');
+  quick.innerHTML = data.tags.length === 0
+    ? '<span style="color:var(--ink-medium); font-size:13px;">尚無常用食材,請到「常用食材」頁籤新增</span>'
+    : data.tags.map(t => `
+        <span class="quick-tag" onclick="fillFromTag('${t.name.replace(/'/g, "\\'")}', ${t.amount || 'null'})">
+          ${t.name}${t.amount ? ` <small style="opacity:0.6">$${t.amount}</small>` : ''}
+        </span>
+      `).join('');
+
+  const settings = document.getElementById('settingsTagsArea');
+  settings.innerHTML = data.tags.length === 0
+    ? '<span style="color:var(--ink-medium); font-size:13px;">尚未設定任何食材</span>'
+    : data.tags.map(t => `
+        <span class="quick-tag" style="cursor:default;">
+          ${t.name}${t.amount ? ` <small style="opacity:0.6">$${t.amount}</small>` : ''}
+          <span class="remove" onclick="removeTag('${t.name.replace(/'/g, "\\'")}')" style="cursor:pointer;">✕</span>
+        </span>
+      `).join('');
+}
+
+// ============================================
+// 渲染表格與摘要
+// ============================================
+function renderIncomeTable() {
+  const tbody = document.getElementById('incomeTable');
+  const list = data.income.filter(x => inCurrentMonth(x.date)).sort((a, b) => b.date.localeCompare(a.date));
+
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">— 本月尚無營收紀錄 —</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(x => `
+    <tr>
+      <td>${x.date}</td>
+      <td class="amount in">$${fmt(x.amount)}</td>
+      <td>${x.note || '—'}</td>
+      <td><button class="btn-delete" onclick="deleteIncome('${x.id}')">刪除</button></td>
+    </tr>
+  `).join('');
+}
+
+function renderCostTable() {
+  const tbody = document.getElementById('costTable');
+  const filterEl = document.getElementById('filterCategory');
+  const filter = filterEl ? filterEl.value : 'all';
+
+  let list = data.cost.filter(x => inCurrentMonth(x.date));
+  if (filter !== 'all') list = list.filter(x => (x.category || 'food') === filter);
+  list = list.sort((a, b) => b.date.localeCompare(a.date));
+
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">— 本月尚無支出紀錄 —</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = list.map(x => {
+    const cat = CATEGORIES[x.category || 'food'];
+    return `
+      <tr>
+        <td>${x.date}</td>
+        <td><span class="cat-badge ${cat.color}">${cat.emoji} ${cat.name}</span></td>
+        <td><strong>${x.item}</strong></td>
+        <td class="amount out">$${fmt(x.amount)}</td>
+        <td>${x.note || '—'}</td>
+        <td><button class="btn-delete" onclick="deleteCost('${x.id}')">刪除</button></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderCatSummary() {
+  const container = document.getElementById('catSummary');
+  if (!container) return;
+
+  const costList = data.cost.filter(x => inCurrentMonth(x.date));
+  const totals = { food: 0, utility: 0, rent: 0, equip: 0, misc: 0 };
+  costList.forEach(x => {
+    const cat = x.category || 'food';
+    totals[cat] = (totals[cat] || 0) + Number(x.amount);
+  });
+
+  container.innerHTML = Object.keys(CATEGORIES).map(key => {
+    const cat = CATEGORIES[key];
+    const amount = totals[key] || 0;
+    return `
+      <div style="border:1.5px solid var(--ink-medium); border-radius:4px; padding:12px; background:var(--bg-cream);">
+        <div style="font-size:12px; color:var(--ink-medium); margin-bottom:4px;">
+          ${cat.emoji} ${cat.name}
+        </div>
+        <div style="font-family:'Noto Serif TC', serif; font-weight:700; font-size:20px; color:var(--red-stamp);">
+          $${fmt(amount)}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function updateSummary() {
+  const incomeList = data.income.filter(x => inCurrentMonth(x.date));
+  const costList = data.cost.filter(x => inCurrentMonth(x.date));
+
+  const totalIncome = incomeList.reduce((s, x) => s + Number(x.amount), 0);
+  const totalCost = costList.reduce((s, x) => s + Number(x.amount), 0);
+  const net = totalIncome - totalCost;
+  const margin = totalIncome > 0 ? ((net / totalIncome) * 100).toFixed(1) : 0;
+  const days = new Set(incomeList.map(x => x.date)).size;
+
+  document.getElementById('totalIncome').textContent = fmt(totalIncome);
+  document.getElementById('totalCost').textContent = fmt(totalCost);
+  document.getElementById('netProfit').textContent = fmt(net);
+  document.getElementById('incomeDays').textContent = `— ${days} 天營業 —`;
+  document.getElementById('costCount').textContent = `— ${costList.length} 筆支出 —`;
+  document.getElementById('profitMargin').textContent = `— 利潤率 ${margin}% —`;
+}
+
+// ============================================
+// 圖表
+// ============================================
+let dailyChartInstance = null;
+let categoryChartInstance = null;
+
+function renderCharts() {
+  renderDailyChart();
+  renderCategoryChart();
+}
+
+function renderDailyChart() {
+  const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+  const labels = [];
+  const incomeData = [];
+  const costData = [];
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    labels.push(d + '日');
+    incomeData.push(data.income.filter(x => x.date === dateStr).reduce((s,x) => s+Number(x.amount), 0));
+    costData.push(data.cost.filter(x => x.date === dateStr).reduce((s,x) => s+Number(x.amount), 0));
+  }
+
+  if (dailyChartInstance) dailyChartInstance.destroy();
+  const ctx = document.getElementById('dailyChart').getContext('2d');
+  dailyChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: '營收', data: incomeData, backgroundColor: '#A67C2D', borderRadius: 2 },
+        { label: '支出', data: costData, backgroundColor: '#C8362C', borderRadius: 2 }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          labels: { font: { family: 'Noto Serif TC', size: 13, weight: 'bold' }, color: '#2A1810' }
+        }
+      },
+      scales: {
+        x: { ticks: { font: { family: 'Noto Sans TC', size: 11 }, color: '#5C3A21' } },
+        y: { ticks: { font: { family: 'Noto Sans TC', size: 11 }, color: '#5C3A21', callback: v => '$' + fmt(v) } }
+      }
+    }
+  });
+}
+
+function renderCategoryChart() {
+  const costList = data.cost.filter(x => inCurrentMonth(x.date));
+  const totals = { food: 0, utility: 0, rent: 0, equip: 0, misc: 0 };
+  costList.forEach(x => {
+    const cat = x.category || 'food';
+    totals[cat] = (totals[cat] || 0) + Number(x.amount);
+  });
+
+  const entries = Object.entries(totals).filter(([k, v]) => v > 0);
+
+  if (categoryChartInstance) categoryChartInstance.destroy();
+  const ctx = document.getElementById('categoryChart').getContext('2d');
+
+  if (entries.length === 0) {
+    ctx.font = "16px 'Zen Kurenaido'";
+    ctx.fillStyle = '#5C3A21';
+    ctx.textAlign = 'center';
+    ctx.fillText('本月尚無支出資料', ctx.canvas.width / 2, ctx.canvas.height / 2);
+    return;
+  }
+
+  const colorMap = {
+    food: '#5C8A3A',
+    utility: '#3B82A8',
+    rent: '#8B5CF6',
+    equip: '#D97706',
+    misc: '#6B7280'
+  };
+
+  categoryChartInstance = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: entries.map(([k]) => `${CATEGORIES[k].emoji} ${CATEGORIES[k].name}`),
+      datasets: [{
+        data: entries.map(([k, v]) => v),
+        backgroundColor: entries.map(([k]) => colorMap[k]),
+        borderColor: '#FBF3D9',
+        borderWidth: 3
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: { font: { family: 'Noto Sans TC', size: 13 }, color: '#2A1810', padding: 10 }
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const total = ctx.dataset.data.reduce((a,b) => a+b, 0);
+              const pct = ((ctx.parsed / total) * 100).toFixed(1);
+              return ` ${ctx.label}: $${fmt(ctx.parsed)} (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// ============================================
+// 匯入 / 匯出
+// ============================================
+function exportData() {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `炒飯記帳備份_${todayStr()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('已匯出備份檔');
+}
+
+function exportCSV() {
+  let csv = '\uFEFF'; 
+  csv += '【本月營收】\n日期,營業額,備註\n';
+  data.income.filter(x => inCurrentMonth(x.date)).sort((a,b) => a.date.localeCompare(b.date)).forEach(x => csv += `${x.date},${x.amount},"${x.note||''}"\n`);
+
+  csv += '\n【本月支出】\n日期,類別,項目,金額,備註\n';
+  data.cost.filter(x => inCurrentMonth(x.date)).sort((a,b) => a.date.localeCompare(b.date)).forEach(x => {
+    const cat = CATEGORIES[x.category || 'food'];
+    csv += `${x.date},"${cat.name}","${x.item}",${x.amount},"${x.note||''}"\n`;
+  });
+
+  csv += '\n【支出分類小計】\n類別,金額\n';
+  const totals = {};
+  data.cost.filter(x => inCurrentMonth(x.date)).forEach(x => {
+    const cat = x.category || 'food';
+    totals[cat] = (totals[cat] || 0) + Number(x.amount);
+  });
+  Object.keys(CATEGORIES).forEach(key => {
+    csv += `"${CATEGORIES[key].name}",${totals[key] || 0}\n`;
+  });
+
+  const totalIn = data.income.filter(x => inCurrentMonth(x.date)).reduce((s,x)=>s+Number(x.amount),0);
+  const totalOut = data.cost.filter(x => inCurrentMonth(x.date)).reduce((s,x)=>s+Number(x.amount),0);
+  csv += `\n【月份總結】\n總收入,${totalIn}\n總支出,${totalOut}\n淨利,${totalIn-totalOut}\n`;
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); 
+  const url = URL.createObjectURL(blob); 
+  const a = document.createElement('a'); 
+  a.href = url; 
+  a.download = `炒飯記帳_${currentYear}年${currentMonth}月.csv`; 
+  a.click(); 
+  URL.revokeObjectURL(url); 
+  showToast('已匯出 CSV');
+}
+
+async function importData(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (ev) => {
+    try {
+      const imported = JSON.parse(ev.target.result);
+      if (!confirm('匯入會覆蓋目前的資料,確定嗎?')) return;
+      if (imported.income) data.income = imported.income;
+      if (imported.cost) data.cost = imported.cost;
+      if (imported.tags) data.tags = imported.tags;
+      await saveData();
+      updateAll();
+      showToast('匯入成功！已同步雲端');
+    } catch (err) { showToast('檔案格式錯誤'); }
+  };
+  reader.readAsText(file); e.target.value = '';
+}
+
+function updateAll() {
+  updateMonthDisplay();
+  updateSummary();
+  renderIncomeTable();
+  renderCostTable();
+  renderCatSummary();
+  renderTags();
+  if (document.getElementById('tab-chart').classList.contains('active')) renderCharts();
+}
+
+// ============================================
+// 啟動
+// ============================================
+async function initApp() {
+  document.getElementById('incomeDate').value = todayStr();
+  document.getElementById('costDate').value = todayStr();
+  
+  showLoading('連線至雲端資料庫...'); // 打開遮罩
+  await loadData();
+  hideLoading(); // 載入完畢關閉遮罩
+  
+  updateAll();
+}
+
+initApp();
+</script>
+
+</body>
+</html>
