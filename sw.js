@@ -1,9 +1,9 @@
 // ============================================
-// Service Worker for 炒飯記帳本
+// Service Worker for 炒飯記帳本 (修正版)
 // 提供離線功能 + 快取資源
 // ============================================
 
-const CACHE_NAME = 'fried-rice-v3';
+const CACHE_NAME = 'fried-rice-v4';
 const APP_SHELL = [
   './',
   './index.html',
@@ -18,10 +18,9 @@ const APP_SHELL = [
 // 安裝:預先快取核心資源
 // ============================================
 self.addEventListener('install', event => {
-  self.skipWaiting(); // 不等舊版 sw 結束
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
-      // 個別 add 失敗不會中斷整體 (例如某個外部資源暫時掛掉)
       return Promise.all(
         APP_SHELL.map(url =>
           cache.add(url).catch(err => console.log('[SW] 快取失敗:', url, err))
@@ -40,39 +39,74 @@ self.addEventListener('activate', event => {
       .then(keys => Promise.all(
         keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
       ))
-      .then(() => self.clients.claim()) // 立即接管所有頁面
+      .then(() => self.clients.claim())
   );
 });
+
+// ============================================
+// 工具:檢查請求是否可以快取
+// ============================================
+function isCacheable(request) {
+  const url = new URL(request.url);
+
+  // 只快取 http/https
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return false;
+  }
+
+  // 排除瀏覽器擴充功能
+  if (url.protocol === 'chrome-extension:' ||
+      url.protocol === 'moz-extension:' ||
+      url.protocol === 'safari-extension:') {
+    return false;
+  }
+
+  // 排除 Apps Script API (避免拿到舊資料)
+  if (url.hostname.includes('script.google.com') ||
+      url.hostname.includes('googleusercontent.com') ||
+      url.hostname.includes('script.googleusercontent.com')) {
+    return false;
+  }
+
+  // 只快取 GET
+  if (request.method !== 'GET') return false;
+
+  return true;
+}
+
+// 安全快取 (寫入前再檢查一次)
+function safeCachePut(cache, request, response) {
+  if (!isCacheable(request)) return Promise.resolve();
+  if (!response || response.status !== 200) return Promise.resolve();
+  // 只快取基本同源或 cors 回應
+  if (response.type === 'opaque' || response.type === 'opaqueredirect') {
+    return Promise.resolve();
+  }
+  return cache.put(request, response).catch(err => {
+    console.log('[SW] 快取寫入失敗:', request.url, err.message);
+  });
+}
 
 // ============================================
 // 攔截請求:智慧快取策略
 // ============================================
 self.addEventListener('fetch', event => {
+  // 不可快取的請求,讓瀏覽器自己處理
+  if (!isCacheable(event.request)) return;
+
   const url = new URL(event.request.url);
 
-  // ⚠️ Google Apps Script API 永遠走網路,不快取
-  // (避免拿到舊資料)
-  if (url.hostname.includes('script.google.com') ||
-      url.hostname.includes('googleusercontent.com')) {
-    return; // 讓瀏覽器自己處理
-  }
-
-  // 只處理 GET 請求
-  if (event.request.method !== 'GET') return;
-
-  // === HTML 頁面:network-first (有網路時抓最新版,沒網路用快取) ===
+  // === HTML 頁面:network-first ===
   if (event.request.mode === 'navigate' ||
       event.request.destination === 'document') {
     event.respondWith(
       fetch(event.request)
         .then(response => {
-          // 抓到新版,順手更新快取
           const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+          caches.open(CACHE_NAME).then(cache => safeCachePut(cache, event.request, copy));
           return response;
         })
         .catch(() => {
-          // 沒網路 → 用快取
           return caches.match(event.request)
             .then(cached => cached || caches.match('./index.html'));
         })
@@ -80,22 +114,20 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // === 其他資源 (字體、JS、CSS):cache-first (有快取就用,沒有再抓) ===
+  // === 其他資源:cache-first ===
   event.respondWith(
     caches.match(event.request)
       .then(cached => {
         if (cached) return cached;
         return fetch(event.request).then(response => {
-          // 有效回應才存
           if (response && response.status === 200) {
             const copy = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+            caches.open(CACHE_NAME).then(cache => safeCachePut(cache, event.request, copy));
           }
           return response;
         });
       })
       .catch(() => {
-        // 完全沒網路也沒快取,回個簡單訊息
         return new Response('離線中,此資源無法載入', {
           status: 503,
           statusText: 'Service Unavailable'
@@ -105,7 +137,7 @@ self.addEventListener('fetch', event => {
 });
 
 // ============================================
-// 接收主程式訊息 (例如手動清快取)
+// 接收主程式訊息
 // ============================================
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
